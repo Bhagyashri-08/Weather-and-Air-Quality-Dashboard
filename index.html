@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Weather and Air Quality Dashboard</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f3f6f8;--surface:#fff;--ink:#14303d;--muted:#5d7380;--line:#d9e3e8;--accent:#1b6f8f;--temp:#d9822b;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1b22;--surface:#17262f;--ink:#e6f0f4;--muted:#93a9b4;--line:#27404d;--accent:#5bb8d9;--temp:#f0a25a;color-scheme:dark}}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:20px 16px 32px}
+header{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end;margin-bottom:16px}
+h1{font-size:1.5rem;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.85rem;margin:2px 0 0}
+select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 12px;min-width:170px}
+select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.kpi b{display:block;font-size:1.7rem;line-height:1.2}
+.kpi span{color:var(--muted);font-size:.82rem}
+.pill{display:inline-block;padding:2px 10px;border-radius:99px;color:#fff;font-size:.8rem;font-weight:600;margin-top:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:720px){.grid{grid-template-columns:1fr}}
+h2{font-size:.95rem;margin:0 0 8px}
+svg{width:100%;height:auto;display:block}
+svg text{fill:var(--muted);font-size:11px;font-family:inherit}
+.rank{display:grid;grid-template-columns:90px 1fr 44px;gap:8px;align-items:center;font-size:.85rem;margin:6px 0;cursor:pointer;border:0;background:none;color:var(--ink);width:100%;text-align:left;padding:0;font-family:inherit}
+.rank .bar{height:12px;border-radius:6px;background:var(--line);overflow:hidden}
+.rank .bar i{display:block;height:100%;border-radius:6px}
+.rank.on{font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:.75rem;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.note{color:var(--muted);font-size:.78rem;margin-top:14px}
+.scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>Weather and Air Quality Dashboard</h1>
+    <p class="sub">Monthly average temperature and AQI across six Indian cities</p>
+  </div>
+  <label><span class="sub">City&nbsp;</span>
+    <select id="city" aria-label="Choose city"></select>
+  </label>
+</header>
+
+<section class="kpis" id="kpis"></section>
+
+<section class="grid">
+  <div class="card"><h2>Average temperature by month (°C)</h2><div class="scroll"><div id="tempChart"></div></div></div>
+  <div class="card"><h2>Average AQI by month</h2><div class="scroll"><div id="aqiChart"></div></div></div>
+</section>
+
+<section class="card" style="margin-top:12px">
+  <h2>City comparison: yearly average AQI (select a city)</h2>
+  <div id="rank"></div>
+  <div class="legend" id="legend"></div>
+</section>
+
+<p class="note">Demo data: illustrative sample values for portfolio practice, not live readings. AQI categories follow the Indian CPCB scale.</p>
+</main>
+
+<script>
+var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+var D={
+ "Pune":{t:[23,25,28,31,31,27,25,24,25,26,24,22],a:[118,110,100,92,80,48,42,45,55,90,125,140]},
+ "Mumbai":{t:[26,27,29,31,32,30,28,28,28,30,29,27],a:[135,125,110,95,80,50,40,42,55,100,130,145]},
+ "Delhi":{t:[14,17,23,29,34,35,32,31,30,26,20,15],a:[300,250,190,170,160,140,100,95,150,260,370,380]},
+ "Aurangabad":{t:[23,25,29,33,35,30,26,25,26,27,24,22],a:[105,100,95,88,78,50,40,42,50,85,110,120]},
+ "Bengaluru":{t:[22,24,26,28,27,25,24,24,24,24,23,21],a:[85,80,75,70,60,45,40,42,50,70,80,90]},
+ "Hyderabad":{t:[23,25,28,31,32,28,26,25,26,26,24,22],a:[100,98,92,85,75,55,48,50,60,90,105,115]}
+};
+var CAT=[[50,"Good","#2e9e5b"],[100,"Satisfactory","#8bb83a"],[200,"Moderate","#d9a41e"],[300,"Poor","#e5772b"],[400,"Very poor","#d1453b"],[999,"Severe","#8e2a5e"]];
+function cat(v){for(var i=0;i<CAT.length;i++)if(v<=CAT[i][0])return CAT[i]}
+function avg(a){return Math.round(a.reduce(function(x,y){return x+y},0)/a.length)}
+var cur="Pune";
+var sel=document.getElementById("city");
+Object.keys(D).forEach(function(c){var o=document.createElement("option");o.value=o.textContent=c;sel.appendChild(o)});
+sel.onchange=function(){cur=sel.value;draw()};
+
+function axis(max,steps,W,H,L,B,T){
+  var s="";
+  for(var i=0;i<=steps;i++){var v=max*i/steps,y=H-B-(H-B-T)*i/steps;
+    s+='<line x1="'+L+'" x2="'+(W-8)+'" y1="'+y+'" y2="'+y+'" stroke="var(--line)"/><text x="'+(L-6)+'" y="'+(y+4)+'" text-anchor="end">'+Math.round(v)+'</text>'}
+  return s}
+function tempChart(d){
+  var W=520,H=230,L=34,B=26,T=10,max=40,n=12,st=(W-L-8)/(n-1),p=[];
+  var s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Monthly temperature line chart">'+axis(max,4,W,H,L,B,T);
+  d.t.forEach(function(v,i){var x=L+i*st,y=H-B-(H-B-T)*v/max;p.push(x+","+y);
+    s+='<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle">'+M[i]+'</text>'});
+  s+='<polyline points="'+p.join(" ")+'" fill="none" stroke="var(--temp)" stroke-width="2.5" stroke-linejoin="round"/>';
+  d.t.forEach(function(v,i){var x=L+i*st,y=H-B-(H-B-T)*v/max;
+    s+='<circle cx="'+x+'" cy="'+y+'" r="4" fill="var(--temp)"><title>'+M[i]+': '+v+'°C</title></circle>'});
+  return s+'</svg>'}
+function aqiChart(d){
+  var W=520,H=230,L=34,B=26,T=10,mx=Math.max(100,Math.ceil(Math.max.apply(null,d.a)/100)*100),bw=(W-L-8)/12;
+  var s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Monthly AQI bar chart">'+axis(mx,4,W,H,L,B,T);
+  d.a.forEach(function(v,i){var h=(H-B-T)*v/mx,x=L+i*bw+4;
+    s+='<rect x="'+x+'" y="'+(H-B-h)+'" width="'+(bw-8)+'" height="'+h+'" rx="3" fill="'+cat(v)[2]+'"><title>'+M[i]+': AQI '+v+' ('+cat(v)[1]+')</title></rect>'+
+       '<text x="'+(x+(bw-8)/2)+'" y="'+(H-8)+'" text-anchor="middle">'+M[i]+'</text>'});
+  return s+'</svg>'}
+function draw(){
+  var d=D[cur],aa=avg(d.a),ca=cat(aa),worst=d.a.indexOf(Math.max.apply(null,d.a)),best=d.a.indexOf(Math.min.apply(null,d.a));
+  document.getElementById("kpis").innerHTML=
+   '<div class="card kpi"><span>Average temperature</span><b>'+avg(d.t)+'°C</b><span>Peak '+Math.max.apply(null,d.t)+'°C in '+M[d.t.indexOf(Math.max.apply(null,d.t))]+'</span></div>'+
+   '<div class="card kpi"><span>Average AQI</span><b>'+aa+'</b><span class="pill" style="background:'+ca[2]+'">'+ca[1]+'</span></div>'+
+   '<div class="card kpi"><span>Most polluted month</span><b>'+M[worst]+'</b><span>AQI '+d.a[worst]+'</span></div>'+
+   '<div class="card kpi"><span>Cleanest month</span><b>'+M[best]+'</b><span>AQI '+d.a[best]+'</span></div>';
+  document.getElementById("tempChart").innerHTML=tempChart(d);
+  document.getElementById("aqiChart").innerHTML=aqiChart(d);
+  var names=Object.keys(D).sort(function(a,b){return avg(D[b].a)-avg(D[a].a)}),mx=avg(D[names[0]].a),h="";
+  names.forEach(function(c){var v=avg(D[c].a);
+    h+='<button class="rank'+(c===cur?' on':'')+'" data-c="'+c+'"><span>'+c+'</span><span class="bar"><i style="width:'+(v/mx*100)+'%;background:'+cat(v)[2]+'"></i></span><span>'+v+'</span></button>'});
+  var r=document.getElementById("rank");r.innerHTML=h;
+  r.querySelectorAll("button").forEach(function(b){b.onclick=function(){cur=b.dataset.c;sel.value=cur;draw()}});
+  document.getElementById("legend").innerHTML=CAT.map(function(c){return '<span><i style="background:'+c[2]+'"></i>'+c[1]+'</span>'}).join("");
+}
+draw();
+</script>
+</body>
+</html>
